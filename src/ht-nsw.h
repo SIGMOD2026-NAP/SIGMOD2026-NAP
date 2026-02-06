@@ -15,6 +15,13 @@ extern std::unique_lock<std::mutex>* glock;
 
 template <bool use_heuristic = 1, bool isbuilt = 1>
 class ht_nsw {
+    public:
+    lsh::srp* srp = nullptr;
+    std::vector<int> mips_for_head;
+
+    int lshL = 5;
+    int lshK = 12;
+
     private:
     std::string index_file;
     IpSpace* ips = nullptr;
@@ -27,6 +34,8 @@ class ht_nsw {
     public:
     int N;
     int dim;
+    int M = 24;
+    int efC = 80;
     std::string alg_name = "ht_nsw";
     std::vector<float> rank;
     std::vector<std::pair<float, int>> norm_pairs;
@@ -52,8 +61,12 @@ class ht_nsw {
     std::vector<double> xs, w, Fx, Fdx, Fy;
 
 
-    ht_nsw(Preprocess& prep_, const std::string& file, float delta_thred_ = 0.01) {
+    ht_nsw(Preprocess& prep_, const std::string& file, int L_, int K_, int efC_, float delta_thred_ = 0.01, int M_ = 24) {
+        M = M_;
+        efC = efC_;
         delta_thred = delta_thred_;
+        lshL = L_;
+        lshK = K_;
         if(prep_.data.N < 1e5) block_size /= 4;
         rank = prep_.rank;
         norm_pairs = prep_.len;
@@ -90,7 +103,9 @@ class ht_nsw {
                 data_head.N = N - n1;
                 data_head.val = new float* [data_head.N];
                 for(int i = n1; i < N; ++i) data_head.val[i - n1] = data.val[norm_pairs[i].second];
-                srp = new lsh::srp(data_head, index_file + ".head", norm_pairs, n1, 5, floor(log2(N - n1)), 0);
+
+                //srp = new lsh::srp(data_head, index_file + ".head", norm_pairs, n1, 1, floor(log2(N - n1)), 0);
+                srp = new lsh::srp(data_head, index_file + ".head", norm_pairs, n1, lshL, lshK, 0);
 
             }
             float mem = (float)getCurrentRSS() / (1024 * 1024);
@@ -235,25 +250,12 @@ class ht_nsw {
     void update_Fy(int s, int e){
         // #pragma omp parallel for
         for(int i = 0; i < n_int; ++i) {
-            // for(int j = s; j < e; ++j){
-            //     auto val = norm_pairs[j].first;
-            //     auto x = xs[i];
-            //     auto& Fy_old = Fy[i];
-            //     double f = Phi(x / (val));
-            //     Fy_old *= f;
-            // }
 
             auto val = norm_pairs[e - 1].first / kappa;
             auto x = xs[i];
             auto& Fy_old = Fy[i];
             double f = Phi(x / (val));
             Fy_old *= std::pow(f, e - s);
-            // for(auto& val : vals){
-            //     auto x = xs[i];
-            //     auto& Fy_old = Fy[i];
-            //     double f = Phi(x / (val));
-            //     Fy_old *= f;
-            // }
         }
     }
 
@@ -262,11 +264,6 @@ class ht_nsw {
         int pt2 = 0;
         kappa = norm_pairs[N - 1].first;
         int min_body_size = std::max(2048, N / 100);
-        //auto good_pt = std::lower_bound(norm_pairs.begin(), norm_pairs.end(), std::make_pair(0.1 * norm_pairs[N - block_size].first, -1)) - norm_pairs.begin();
-        //int good_pt = 1000;
-        //if (pt2 < (int)good_pt) pt2 = good_pt;
-
-        //int init = 0;
         while(norm_pairs[pt2].first < 0.1 * norm_pairs[N - block_size].first) pt2++;
         pt2 += step;
 
@@ -276,8 +273,6 @@ class ht_nsw {
         double I = compute_F();
         std::cout << "initial I=" << I << "\n";
         std::cout << "initial k=" << (norm_pairs[pt1].first / norm_pairs[pt2].first) << ", m=" << N - pt1 << ", n=" << pt2 << "\n";
-        //pt1 = N - 2048;
-        //pt2 = 100;
         lsh::progress_display pd(pt1 - pt2);
         lsh::timer timer;
         while(pt2 + step + min_body_size < pt1) {
@@ -356,13 +351,9 @@ class ht_nsw {
         }
     }
 
-    lsh::srp* srp = nullptr;
-    std::vector<int> mips_for_head;
+
     void buildIndex() {
-        int M = 24;
-        int efC = 80;
         ips = new IpSpace(dim);
-        //apg = new hnsw[parti.numChunks];
         int size = n1 - n2;
 
         if(size < 0) {
@@ -378,10 +369,6 @@ class ht_nsw {
         auto id = n1 - 1;
         auto data0 = data.val[id];
         apg->addPoint((void*)(data0), (size_t)id);
-
-        //id = norm_pairs[N - 1].second;
-        //data0 = data.val[id];
-        //apg_head->addPoint((void*)(data0), (size_t)id);
         std::mutex inlock;
 
         auto vecsize = N;
@@ -392,12 +379,9 @@ class ht_nsw {
             data_head.N = N - n1;
             data_head.val = new float* [data_head.N];
             for(int i = n1; i < N; ++i) data_head.val[i - n1] = data.val[norm_pairs[i].second];
-            srp = new lsh::srp(data_head, index_file + ".head", norm_pairs, n1, 5, floor(log2(N - n1)), 0);
+            srp = new lsh::srp(data_head, index_file + ".head", norm_pairs, n1, lshL, lshK, 0);
 
         }
-
-        //std::cout << "Finish building hash tables for head\n";
-        //printf("Inserted %d points\n", j1);
 
 #pragma omp parallel for //schedule(dynamic,256)
         for(int k = n2; k < n1 - 1; k++) {
@@ -450,7 +434,6 @@ class ht_nsw {
         in.close();
     }
 
-
     void knn(queryN* q) {
         lsh::timer timer;
 
@@ -462,22 +445,13 @@ class ht_nsw {
 
         timer.restart();
         int ef = apg->ef_;
-        //ef = 200;
         auto& appr_alg = apg;
         auto id = 0;
-
-        //auto qres = apg_head->searchKnn(q->queryPoint, q->k + ef);
         bool f = 1;
-        // for(int i = N - 1;i >= main_body_after;--i){
-        //     if(qres.size() > q->k && 1.0 - q->resHeap.top().dist < q->norm * norm_pairs[main_body_after - 1].first){ f = 0; break; }
-        //     qres.push(std::make_pair(1.0f - cal_inner_product(q->queryPoint, data[norm_pairs[i].second], data.dim), norm_pairs[i].second));
-        //     if(qres.size() > q->k) qres.pop();
-
-        // }
 
         int SEARCH_HEAD = 1;
         switch(SEARCH_HEAD) {
-            case 0: {//Linear scan for head
+            case 0: {
                     std::priority_queue<std::pair<float, unsigned int>> qres;
                     for(int i = n1;i < N;++i)
                         qres.push(std::make_pair(1.0f - cal_inner_product(q->queryPoint, data[norm_pairs[i].second], data.dim), norm_pairs[i].second));
@@ -490,7 +464,7 @@ class ht_nsw {
                     }
                 }
                   break;
-            case 1: {//LSH for head
+            case 1: {
                     srp->knn(q);
                     break;
                 }
@@ -499,7 +473,14 @@ class ht_nsw {
         }
 
 
-        if(f && !(q->resHeap.size() >= q->k && 1.0f - q->resHeap.top().dist >= q->norm * norm_pairs[n1 - 1].first)){
+        //std::cout << "qid= " << q->qid << " head done, top dist=" << (1.0 - q->resHeap.top().dist) << " thred=" << (q->norm * norm_pairs[n1 - 1].first) << "\n";
+        //std::cout << "resHeap size=" << q->resHeap.size() << ", k=" << q->k << std::endl;
+        // exit(-1);
+        //ef = 50;
+        if(f && !(q->resHeap.size() >= q->k && 1.0f - q->resHeap.top().dist >= 0.85 * q->norm * norm_pairs[n1 - 1].first)){
+
+            //std::cout << "qid= " << q->qid << " start searching main body\n";
+
             std::vector<unsigned> eps;
             eps.reserve(q->k);
             while(q->resCos.size()) {
@@ -508,6 +489,7 @@ class ht_nsw {
                 q->resCos.pop();
             }
             auto res = appr_alg->searchBaseLayerST<false, false>(eps, (void*)q->queryPoint, (size_t)(q->k + ef));
+            //auto res = appr_alg->searchKnn(q->queryPoint, q->k + ef);
             while(!res.empty()) {
                 auto top = res.top();
                 res.pop();
@@ -527,6 +509,75 @@ class ht_nsw {
         }
         std::reverse(q->res.begin(), q->res.end());
         q->time_total = timer.elapsed();
+    }
+
+
+    void knn_omp(queryN* q) {
+        q->norm = sqrt(cal_inner_product(q->queryPoint, q->queryPoint, data.dim));
+        if(q->norm < 1e-5){
+            std::cout << "warning: zero query norm!" << std::endl;
+            exit(-1);
+        }
+        int ef = apg->ef_;
+        //ef = 200;
+        auto& appr_alg = apg;
+        auto id = 0;
+
+        bool f = 1;
+
+        int SEARCH_HEAD = 1;
+        switch(SEARCH_HEAD) {
+            case 0: {
+                    std::priority_queue<std::pair<float, unsigned int>> qres;
+                    for(int i = n1;i < N;++i)
+                        qres.push(std::make_pair(1.0f - cal_inner_product(q->queryPoint, data[norm_pairs[i].second], data.dim), norm_pairs[i].second));
+
+                    while(!qres.empty()) {
+                        auto top = qres.top();
+                        qres.pop();
+                        q->resHeap.emplace(top.second, top.first);
+                        while(q->resHeap.size() > q->k) q->resHeap.pop();
+                    }
+                }
+                  break;
+            case 1: {
+                    srp->knn(q);
+                    break;
+                }
+            default:
+                break;
+        }
+        if(f && !(q->resHeap.size() >= q->k && 1.0f - q->resHeap.top().dist >= q->norm * norm_pairs[n1 - 1].first)){
+
+            //std::cout << "qid= " << q->qid << " start searching main body\n";
+
+            std::vector<unsigned> eps;
+            eps.reserve(q->k);
+            while(q->resCos.size()) {
+                auto x = q->resCos.top().id;
+                eps.emplace_back(mips_for_head[x]);
+                q->resCos.pop();
+            }
+            auto res = appr_alg->searchBaseLayerST<false, false>(eps, (void*)q->queryPoint, (size_t)(q->k + ef));
+            //auto res = appr_alg->searchKnn(q->queryPoint, q->k + ef);
+            while(!res.empty()) {
+                auto top = res.top();
+                res.pop();
+                q->resHeap.emplace(top.second, top.first);
+                while(q->resHeap.size() > q->k) q->resHeap.pop();
+            }
+        }
+        else{
+            //printf("skip main body\n");
+        }
+
+
+        while(!q->resHeap.empty()) {
+            auto top = q->resHeap.top();
+            q->resHeap.pop();
+            q->res.emplace_back(top.id, 1.0 - top.dist);
+        }
+        std::reverse(q->res.begin(), q->res.end());
     }
 
     void batch_knn(std::vector<queryN*>& qs) {
@@ -549,6 +600,7 @@ class ht_nsw {
 
         for(int i = 0;i < prep.benchmark.N;++i){
             for(int j = 0;j < k;++j){
+
                 if(rank[prep.benchmark.indice[i][j]] >= n1) cnt_head++;
                 else if(rank[prep.benchmark.indice[i][j]] >= n2) cnt_body++;
             }
@@ -558,6 +610,7 @@ class ht_nsw {
         r_body = (float)cnt_body / (prep.benchmark.N * k);
         std::cout << "delta_thred=" << delta_thred << ", n1=" << n1 << ", n2=" << n2 << ", k=" << k << "\n";
         std::cout << "head ratio: " << r_head << ", body ratio: " << r_body << "\n\n\n";
+        // return r_head + r_body;
     }
 
     ~ht_nsw() {

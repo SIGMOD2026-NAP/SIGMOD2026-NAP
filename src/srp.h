@@ -28,6 +28,7 @@ namespace lsh
 		int size_ = 0;
 		int capacity = 0;
 		Res* data_ = nullptr;
+		
 
 		public:
 		fixxed_length_priority_queue() = default;
@@ -48,8 +49,8 @@ namespace lsh
 		// }
 
 		inline void emplace(int id, float dist) {
-			if(size_ == capacity) {
-				if(dist > data_[0].dist) return;
+			if (size_ == capacity) {
+				if (dist > data_[0].dist) return;
 				pop();
 				data_[size_] = Res(id, dist);
 				std::push_heap(data_, data_ + size_);
@@ -59,8 +60,8 @@ namespace lsh
 		}
 
 		void push(Res res) {
-			if(size_ == capacity) {
-				if(res.dist > data_[0].dist) return;
+			if (size_ == capacity) {
+				if (res.dist > data_[0].dist) return;
 				pop();
 				data_[size_] = res;
 				std::push_heap(data_, data_ + size_);
@@ -70,8 +71,8 @@ namespace lsh
 		}
 
 		void emplace_with_duplication(int id, float dist) {
-			for(int i = 0;i < size_;++i) {
-				if(data_[i].id == id) return;
+			for (int i = 0;i < size_;++i) {
+				if (data_[i].id == id) return;
 			}
 			emplace(id, dist);
 		}
@@ -158,7 +159,7 @@ namespace lsh
 		//std::vector<std::vector<int>>& part_map;
 		Data data;
 		std::string index_file;
-		std::atomic<size_t> cost { 0 };
+		std::atomic<size_t> cost{ 0 };
 		float* rndAs = nullptr;
 		int dim = 0;
 		// Number of hash functions
@@ -172,12 +173,17 @@ namespace lsh
 		const std::string alg_name = "hash";
 		//std::vector<std::vector<uint16_t>> hashvals;
 		//std::vector<uint16_t[4]> hashvals;
+#ifdef USE_SHIFT
 		std::vector<std::vector<float>> hash_xc;
 		std::vector<float> xc;
+		std::vector<float> additional_item;
+		std::vector<float> norms_shift;
+#endif // USE_SHIFT
+
 		std::vector<std::pair<float, int>> norms;
 		std::vector<std::vector<unsigned>> masks;
 		std::vector<float> thetas;
-		float delta = 0.05f;
+		//float delta = 0.05f;
 		int m;
 
 		hash_tnap hashvals;
@@ -196,6 +202,10 @@ namespace lsh
 			L = L_;
 			K = K_;
 			S = L * K;
+#ifdef USE_SHIFT
+			S = 1024;
+#endif // USE_SHIFT
+
 			hashvals.resize(L, std::vector<int>(data.N, 0));
 			norms = norm_pairs;
 			m = m_;
@@ -208,14 +218,13 @@ namespace lsh
 			//std::ifstream in(index_file, std::ios::binary);
 			lsh::timer timer;
 
-			isbuilt = 1;
-			if(!(isbuilt && exists_test(index_file))) {
+			//isbuilt = 1;
+			if (!(isbuilt && exists_test(index_file))) {
 				float mem = (float)getCurrentRSS() / (1024 * 1024);
 				buildIndex();
 				float memf = (float)getCurrentRSS() / (1024 * 1024);
 				indexing_time = timer.elapsed();
 				std::cout << "SRP Building time:" << indexing_time << "  seconds.\n";
-
 
 				// FILE* fp = nullptr;
 				// fopen_s(&fp, "./indexes/maria_info.txt", "a");
@@ -236,7 +245,9 @@ namespace lsh
 			updateTheta();
 			masks.resize(K + 1);
 			masks[0].emplace_back(0);
-			for(int j = 1; j <= K; ++j) findNumbersWithJOnes(K, j);
+			for (int j = 1; j <= K; ++j) findNumbersWithJOnes(K, j);
+
+			buckets_statistics();
 
 			// std::cout << "show masks!" << std::endl;
 			// for(int j = 0; j <= K; ++j) {
@@ -248,7 +259,28 @@ namespace lsh
 			// }
 		}
 
-		srp(Data& data_, int L_ = 5, int K_ = 10){
+		void buckets_statistics() {
+			std::cout << "Hash Table Buckets Statistics: " << std::endl;
+			for (int j = 0; j < L; ++j) {
+				size_t empty_count = 0;
+				size_t max_size = 0;
+				size_t sum_size = 0;
+				size_t sum_sqaure_size = 0;
+				for (int b = 0;b < (1 << K);++b) {
+					size_t sz = hash_tables[j][b].size();
+					if (sz == 0) empty_count++;
+					if (sz > max_size) max_size = sz;
+					sum_size += sz;
+					sum_sqaure_size += sz * sz;
+				}
+				std::cout << "Table " << j << ": Empty Buckets: " << empty_count << ", Max Bucket Size: " << max_size
+					<< ", Average Bucket Size: " << (float)sum_size / (1 << K)
+					<< ", Stddev Bucket Size: " << sqrt((float)sum_sqaure_size / (1 << K) - ((float)sum_size / (1 << K)) * ((float)sum_size / (1 << K)))
+					<< std::endl;
+			}
+		}
+
+		srp(Data& data_, int L_ = 5, int K_ = 10) {
 			data = data_;
 			// N=N_;
 			dim = data.dim;
@@ -257,25 +289,51 @@ namespace lsh
 			S = L * K;
 		}
 
+#ifdef USE_SHIFT
 		void GetCentertHash() {
 			xc.resize(dim, 0.0f);
-			for(int i = 0; i < data.N; ++i) {
-				for(int j = 0; j < data.dim; ++j) {
+			for (int i = 0; i < data.N; ++i) {
+				for (int j = 0; j < data.dim; ++j) {
 					xc[j] += data[i][j];
 				}
 			}
 
-			for(int j = 0; j < data.dim; ++j) {
+			for (int j = 0; j < data.dim; ++j) {
 				xc[j] /= data.N;
 			}
 
 			hash_xc.resize(L, std::vector<float>(K, 0.0f));
-			for(int j = 0; j < L; ++j) {
-				for(int l = 0; l < K; ++l) {
+			for (int j = 0; j < L; ++j) {
+				for (int l = 0; l < K; ++l) {
 					hash_xc[j][l] = cal_inner_product(xc.data(), rndAs + (j * K + l) * dim, dim);
 				}
 			}
+
+			additional_item.resize(data.N, 0.0f);
+			norms_shift.resize(data.N, 0.0f);
+			float ipcc = cal_inner_product(xc.data(), xc.data(), dim);
+
+			for (int i = 0; i < data.N; ++i) {
+				float ipxc = cal_inner_product(data[i], xc.data(), dim);
+				//norms_shift[i] = sqrt(std::max(0.0f, norms[m+i].first * norms[i].first + ipcc - 2 * ipxc));
+
+				additional_item[i] = ipxc + ipcc;
+
+				float val = norms[m + i].first * norms[m + i].first + ipcc - 2 * ipxc;
+
+				if (val < 0.0f) {
+					std::cerr << "Warning: negative value in norms_shift calculation!" << std::endl;
+					exit(-1);
+				}
+
+				norms_shift[i] = sqrt(val);
+
+			}
+
+
 		}
+
+#endif // USE_SHIFT
 
 		void buildIndex() {
 			std::cout << std::endl
@@ -313,7 +371,7 @@ namespace lsh
 			std::mt19937 rng(int(std::time(0)));
 			// std::mt19937 rng(int(0));
 			std::normal_distribution<float> nd;
-			for(int i = 0; i < S * dim; ++i)
+			for (int i = 0; i < S * dim; ++i)
 				rndAs[i] = (nd(rng));
 		}
 
@@ -332,32 +390,38 @@ namespace lsh
 			cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
 				m, n, k, 1.0, A, k, B, k, 0.0, C, n);
 
-			for(int i = 0; i < hashvals.size(); ++i)
+			for (int i = 0; i < hashvals.size(); ++i)
 			{
 				hashvals[i].resize(L, 0);
-				for(int j = 0; j < L; ++j)
+				for (int j = 0; j < L; ++j)
 				{
-					for(int l = 0; l < K; ++l)
+					for (int l = 0; l < K; ++l)
 					{
 						float val = C[i * S + j * K + l];
 						// cal_inner_product(data[i],rndAs+(j*K+l)*dim,dim);
-						if(val > 0)
+						if (val > 0)
 							hashvals[i][j] |= (1 << l);
 					}
 				}
 			}
 #else
 
+#ifdef USE_SHIFT
+			GetCentertHash();
+#else
+			// do nothing
+#endif // USE_SHIFT
+
 #pragma omp parallel for schedule(dynamic, 256)
-			for(int j = 0; j < L; ++j) {
-				for(int i = 0; i < data.N; ++i)
+			for (int j = 0; j < L; ++j) {
+				for (int i = 0; i < data.N; ++i)
 				{
-					for(int l = 0; l < K; ++l){
+					for (int l = 0; l < K; ++l) {
 						float val = cal_inner_product(data[i], rndAs + (j * K + l) * dim, dim);
 #ifdef USE_SHIFT
-						if(val > hash_xc[j][l]) hashvals[j][i] |= (1 << l);
+						if (val > hash_xc[j][l]) hashvals[j][i] |= (1 << l);
 #else
-						if(val > 0) hashvals[j][i] |= (1 << l);
+						if (val > 0) hashvals[j][i] |= (1 << l);
 #endif // 
 
 
@@ -376,12 +440,12 @@ namespace lsh
 			// }
 		}
 
-		void GetTables(){
+		void GetTables() {
 			hash_tables.resize(L);
-			for(int j = 0; j < L; ++j) hash_tables[j].resize(1 << K);
-			for(int i = 0; i < data.N; ++i){
+			for (int j = 0; j < L; ++j) hash_tables[j].resize(1 << K);
+			for (int i = 0; i < data.N; ++i) {
 				int id = i;
-				for(int j = 0; j < L; ++j){
+				for (int j = 0; j < L; ++j) {
 					//hash_tables[j].emplace_back(id, hashvals[id][j]);
 					hash_tables[j][hashvals[j][id]].emplace_back(id);
 				}
@@ -396,7 +460,8 @@ namespace lsh
 			out.write((char*)(&L), sizeof(int));
 			out.write((char*)(&K), sizeof(int));
 			out.write((char*)(&dim), sizeof(int));
-			S = L * K;
+			//S = L * K;
+			out.write((char*)(&S), sizeof(int));
 
 			//save hashpar
 			out.write((char*)(rndAs), sizeof(float) * S * dim);
@@ -404,7 +469,7 @@ namespace lsh
 			//save hashvals
 			int N = hashvals[0].size();
 			out.write((char*)(&N), sizeof(int));
-			for(int j = 0; j < L; ++j) {
+			for (int j = 0; j < L; ++j) {
 				out.write((char*)(hashvals[j].data()), sizeof(int) * N);
 				//for (int i = 0; i < N; ++i) {
 				//	int size = hash_tables[j][i].size();
@@ -414,11 +479,11 @@ namespace lsh
 			}
 
 			//save hash tables
-			for(int j = 0; j < L; ++j) {
-				for(int i = 0;i < hash_tables[j].size();++i){
+			for (int j = 0; j < L; ++j) {
+				for (int i = 0;i < hash_tables[j].size();++i) {
 					int size = hash_tables[j][i].size();
 					out.write((char*)(&size), sizeof(int));
-					if(size > 0)out.write((char*)(hash_tables[j][i].data()), sizeof(int) * size);
+					if (size > 0)out.write((char*)(hash_tables[j][i].data()), sizeof(int) * size);
 				}
 			}
 		}
@@ -431,7 +496,8 @@ namespace lsh
 			in.read((char*)(&L), sizeof(int));
 			in.read((char*)(&K), sizeof(int));
 			in.read((char*)(&dim), sizeof(int));
-			S = L * K;
+			//S = L * K;
+			in.read((char*)(&S), sizeof(int));
 
 			//load hashpar
 			rndAs = new float[S * dim];
@@ -442,7 +508,7 @@ namespace lsh
 			in.read((char*)(&N), sizeof(int));
 			hashvals.resize(L);
 			//out.write((char*)(&N), sizeof(int));
-			for(int j = 0; j < L; ++j) {
+			for (int j = 0; j < L; ++j) {
 				hashvals[j].resize(N);
 				in.read((char*)(hashvals[j].data()), sizeof(int) * N);
 				//for (int i = 0; i < N; ++i) {
@@ -454,9 +520,9 @@ namespace lsh
 
 			//load hash tables
 			hash_tables.resize(L);
-			for(int j = 0; j < L; ++j) {
+			for (int j = 0; j < L; ++j) {
 				hash_tables[j].resize(1 << K);
-				for(int i = 0;i < hash_tables[j].size();++i){
+				for (int i = 0;i < hash_tables[j].size();++i) {
 					int size = 0;
 					in.read((char*)(&size), sizeof(int));
 					hash_tables[j][i].resize(size);
@@ -478,7 +544,7 @@ namespace lsh
 			int combination = (1 << j) - 1;
 			int limit = 1 << K; // This is 2^K, the upper limit of K-bit numbers
 
-			while(combination < limit) {
+			while (combination < limit) {
 				// Print the current combination
 				//std::cout << combination << " (binary: " << std::bitset<32>(combination) << ")" << std::endl;
 
@@ -495,40 +561,41 @@ namespace lsh
 			//hashvals[i].resize(L, 0);
 			//auto& vals = q->srpval;
 			q->hashval = new unsigned[L];
-			for(int j = 0; j < L; ++j) q->hashval[j] = 0;
-			for(int j = 0; j < L; ++j){
-				for(int l = 0; l < K; ++l)
+			for (int j = 0; j < L; ++j) q->hashval[j] = 0;
+			for (int j = 0; j < L; ++j) {
+				for (int l = 0; l < K; ++l)
 				{
 					float val = cal_inner_product(q->queryPoint, rndAs + (j * K + l) * dim, dim);
-					if(val > 0)
+					if (val > 0)
 						q->hashval[j] |= (1 << l);
 				}
 			}
 		}
 
 		// Lemma6.2 Eq.8
-		double function_p(int j, float theta){
+		double function_p(int j, float theta) {
 			double pi = 3.14159265358979323846;
 			double p1 = (1.0 - theta / pi), p2 = theta / pi;
 			int coeff = 1;
 			double res = 0.0;
-			for(int i = 0;i <= j;++i){
+			for (int i = 0;i <= j;++i) {
 				res += coeff * pow(p1, K - i) * pow(p2, i);
 				coeff = coeff * (K - i) / (i + 1);
 			}
 			return 1.0 - res;
 		}
 
-		void updateTheta(){
+		void updateTheta(float delta = 0.05f) {
 			double pi = 3.14159265358979323846;
 			float thred = pow(delta, 1.0f / L);
+			thetas.clear();
 			int pos = 0;
-			for(float theta = 0.001f;theta <= pi;theta += 0.001f){
+			for (float theta = 0.001f;theta <= pi;theta += 0.001f) {
 				double f = function_p(pos, theta);
-				if(f > thred) {
+				if (f > thred) {
 					thetas.push_back(theta);
 					pos++;
-					if(pos > K) break;
+					if (pos > K) break;
 				}
 			}
 
@@ -538,7 +605,7 @@ namespace lsh
 			// std::cout << std::endl;
 		}
 
-		struct pairs{
+		struct pairs {
 			int lb;
 			int ub;
 			pairs(int l, int u) :lb(l), ub(u) {}
@@ -567,32 +634,26 @@ namespace lsh
 #endif // 
 
 			//auto& bucket = hash_tables[i][q->hashval[i]];
-			for(int j = 0;j < K;++j){
-				for(int i = 0;i < L;++i){
+			for (int j = 0;j < K;++j) {
+				for (int i = 0;i < L;++i) {
 					auto& table = hash_tables[i];
 					int val = q->hashval[i];
-					for(auto& mask : masks[j]){
+					for (auto& mask : masks[j]) {
 						int v = val ^ mask;
 						auto& bucket = table[v];
-						for(auto& id : bucket){
-							if(visited.find(id) == visited.end()){
-								float ip = cal_inner_product(q->queryPoint, data[id], data.dim);
-								q->resHeap.emplace(norms[m + id].second, 1.0 - ip);
-								float cos_sim = 1.0 - ip / norms[m + id].first;
-								q->resCos.emplace(id, cos_sim);
+						for (auto& id : bucket) {
+							if (visited.find(id) == visited.end()) {
 
-								if(q->resHeap.size() > q->k) q->resHeap.pop();
-								if(q->resCos.size() > 1) q->resCos.pop();
 								//}
 								//else{
 								visited[id] = pairs(id, id);
-								if(visited.find(id - 1) != visited.end()){
-									if(visited.find(id + 1) != visited.end()){
+								if (visited.find(id - 1) != visited.end()) {
+									if (visited.find(id + 1) != visited.end()) {
 										visited[visited[id - 1].lb].ub = visited[id + 1].ub;
 										visited[visited[id + 1].ub].lb = visited[id - 1].lb;
 										//visited.erase(id + 1);
 									}
-									else{
+									else {
 										visited[visited[id - 1].lb].ub = id;
 										visited[id].lb = visited[id - 1].lb;
 									}
@@ -600,26 +661,45 @@ namespace lsh
 
 									//visited.erase(id - 1);
 								}
-								else{
-									if(visited.find(id + 1) != visited.end()){
+								else {
+									if (visited.find(id + 1) != visited.end()) {
 										visited[visited[id + 1].ub].lb = id;
 										visited[id].ub = visited[id + 1].ub;
 										//visited.erase(id + 1);
 									}
 								}
 
-								if(id == unvisited_ub) unvisited_ub = visited[id].lb - 1;
+								if (id == unvisited_ub) unvisited_ub = visited[id].lb - 1;
+
+#ifdef USE_SHIFT
+								// if(q->resHeap.size() >= q->k && 1.0f - q->resHeap.top().dist > norms_shift[m + unvisited_ub] * cos(thetas[j]))
+								// 	break;
+
+
+
+#else
+								float ip = cal_inner_product(q->queryPoint, data[id], data.dim);
+								q->cost++;
+								q->resHeap.emplace(norms[m + id].second, 1.0 - ip);
+								float cos_sim = 1.0 - ip / norms[m + id].first;
+								q->resCos.emplace(id, cos_sim);
+
+								if (q->resHeap.size() > q->k) q->resHeap.pop();
+								if (q->resCos.size() > 1) q->resCos.pop();
+#endif
+
+
 							}
 						}
 					}
 
 				}
 #ifdef USE_SHIFT
-				if(q->resHeap.size() >= q->k && 1.0f - q->resHeap.top().dist - q_xc > norms[m + unvisited_ub].first * cos(thetas[j]))
-					break;
-#else
-				// if(q->resHeap.size() >= q->k && 1.0f - q->resHeap.top().dist > q->norm * norms[m + unvisited_ub].first * cos(thetas[j]))
+				// if(q->resHeap.size() >= q->k && 1.0f - q->resHeap.top().dist > norms_shift[m + unvisited_ub] * cos(thetas[j]))
 				// 	break;
+#else
+				if (q->resHeap.size() >= q->k && 1.0f - q->resHeap.top().dist > q->norm * norms[m + unvisited_ub].first * cos(thetas[j]))
+					break;
 #endif // 
 
 			}

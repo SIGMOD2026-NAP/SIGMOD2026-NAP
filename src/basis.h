@@ -164,7 +164,13 @@ inline void saveIndexInfo(const std::string& index_file, const std::string& info
 
 inline float cal_inner_product(float* v1, float* v2, int dim)
 {
-	++_G_COST;
+	// float res = 0.0;
+	// for(int i = 0; i < dim; ++i) {
+	// 	res += v1[i] * v2[i];
+	// }
+	// return res;
+
+	//  ++_G_COST;
 #ifdef __AVX2__
 	// printf("here!\n");
 	// exit(-1);
@@ -184,7 +190,7 @@ inline float cal_inner_product(float* v1, float* v2, int dim)
 inline float cal_cosine_similarity(float* v1, float* v2, int dim,
 	float norm1, float norm2)
 {
-	++_G_COST;
+	//++_G_COST;
 #ifdef __AVX2__
 	// printf("here!\n");
 	// exit(-1);
@@ -203,7 +209,7 @@ inline float cal_cosine_similarity(float* v1, float* v2, int dim,
 
 inline float cal_L2sqr(float* v1, float* v2, int dim)
 {
-	++_G_COST;
+	//++_G_COST;
 #ifdef __AVX2__
 	return (faiss::fvec_L2sqr_avx512(v1, v2, dim));
 #else

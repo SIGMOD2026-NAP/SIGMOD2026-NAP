@@ -117,18 +117,6 @@ class myNAPG {
 
     std::string alg_name = "napg";
 
-    // myNADG(Preprocess& prep_, Parameter& param_, const std::string& file, Partition& part_, const std::string& funtable){
-    // 	N = param_.N;
-    // 	dim = param_.dim;
-    // 	L = param_.L;
-    // 	K = param_.K;
-    // 	S = param_.S;
-    // 	//prep = &prep_;
-    // 	data = prep_.data;
-    // 	//GetHash();
-    // 	buildIndex();
-    // }
-
     myNAPG(Data& data_, int M, int efC, int ef, const std::string& file, bool norm_adjusted_factor = true) {
         N = data_.N;
         dim = data_.dim;
@@ -175,9 +163,6 @@ class myNAPG {
             std::cout << "Actual memory usage: " << memf - mem << " Mb \n";
         }
 
-
-
-        //std::cout << "DAPG2 CONSTRUCTING TIME: " << timer.elapsed() << "s." << std::endl << std::endl;
     }
 
     inline bool exists_test(const std::string& name) {

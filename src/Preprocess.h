@@ -94,9 +94,21 @@ class Preprocess
 		data.N = header[1] - 200;
 		data.dim = header[2];
 
-		while(varied_n > 0) {
-			data.N /= 10;
-			varied_n--;
+		// while(varied_n > 0) {
+		// 	data.N /= 10;
+		// 	varied_n--;
+			
+		// }
+
+		if(varied_n > 0) {
+			size_t original_N = data.N;
+			size_t new_N = original_N*varied_n/10000;
+			data.N = new_N;
+
+			if(varied_n > 10000) {
+				std::cerr << "varied_n should be less than or equal to 10000." << std::endl;
+				exit(-1);
+			}
 		}
 
 		queries.N = 200;

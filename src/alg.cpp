@@ -3,8 +3,7 @@
 std::atomic<size_t> _G_COST = 0;
 
 #if defined(unix) || defined(__unix__)
-//std::string data_fold = "/home/xizhao/dataset/", index_fold = " ";
-std::string data_fold = "./datasets/", index_fold = "./indexes/";
+std::string data_fold = "./dataset/", index_fold = "./indexes/";
 std::string data_fold1 = data_fold, data_fold2 = data_fold + ("MIPS/");
 #else
 std::string data_fold = "E:/Dataset_for_c/", index_fold = " ";
@@ -56,7 +55,7 @@ void saveAndShow(float c, int k, std::string& dataset, std::vector<resOutput>& r
 	std::stringstream ss;
 
 	ss << "*******************************************************************************************************\n"
-		<< "The result of AMIPS for " << dataset << " is as follow: c=" << c << ", k=" << k
+		<< "The result of FARGO for " << dataset << " is as follow: c=" << c << ", k=" << k
 		<< "\n"
 		<< "*******************************************************************************************************\n";
 
@@ -87,18 +86,6 @@ void saveAndShow(float c, int k, std::string& dataset, std::vector<resOutput>& r
 		<< "                                                                                    "
 		<< ltm->tm_mon + 1 << '-' << ltm->tm_mday << ' ' << ltm->tm_hour << ':' << ltm->tm_min
 		<< "\n*****************************************************************************************************\n\n\n";
-
-	// #if defined(unix) || defined(__unix__)
-	// 	ss << "\n******************************************************************************************************\n"
-	// 		<< "                                                                                    "
-	// 		<< lt.date << '-' << lt.h << ':' << lt.m << ':' << lt.s
-	// 		<< "\n******************************************************************************************************\n\n\n";
-	// #else
-	// 	ss << "\n******************************************************************************************************\n"
-	// 		<< "                                                                                    "
-	// 		<< ltm->tm_mon + 1 << '-' << ltm->tm_mday << ' ' << ltm->tm_hour << ':' << ltm->tm_min
-	// 		<< "\n*****************************************************************************************************\n\n\n";
-	// #endif
 
 
 	std::cout << ss.str();

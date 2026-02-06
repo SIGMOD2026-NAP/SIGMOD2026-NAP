@@ -167,6 +167,15 @@ void Preprocess::ben_make()
 			//dists[i]=a;
 		}
 
+		if(data.N< 1e5){
+			std::sort(dists.begin(), dists.end(), comp);
+			for (int i = 0; i < benchmark.num; i++) {
+				benchmark.indice[j][i] = (int)dists[i].id;
+				benchmark.innerproduct[j][i] = dists[i].inp;
+			}
+			++pd;
+			continue;
+		}
 
 		int nsort = data.N / NUM_COURS;//our cpu server has 160 cores.
 #pragma omp parallel for schedule(dynamic,1)

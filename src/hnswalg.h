@@ -18,6 +18,7 @@
 #include <algorithm>
 extern std::unique_lock<std::mutex>* glock;
 //#define COUNT_CC
+//#define COUNT_HC
 extern std::atomic<size_t> _G_COST;
 
 #include "patch_ubuntu.h"
@@ -315,8 +316,10 @@ namespace hnswlib {
                 size_t size = getListCount((linklistsizeint*)data);
                 //                bool cur_node_deleted = isMarkedDeleted(current_node_id);
                 if(collect_metrics) {
+#ifdef COUNT_HC
                     metric_hops++;
                     metric_distance_computations += size;
+#endif
                 }
 
 #ifdef USE_SSE
@@ -394,8 +397,11 @@ namespace hnswlib {
                 size_t size = getListCount((linklistsizeint*)data);
                 //                bool cur_node_deleted = isMarkedDeleted(current_node_id);
                 if(collect_metrics) {
+#ifdef COUNT_HC
                     metric_hops++;
                     metric_distance_computations += size;
+                    cost++;
+#endif
                 }
 
 #ifdef USE_SSE
@@ -459,8 +465,10 @@ namespace hnswlib {
                 size_t size = getListCount((linklistsizeint*)data);
                 //                bool cur_node_deleted = isMarkedDeleted(current_node_id);
                 if(collect_metrics) {
+#ifdef COUNT_HC
                     metric_hops++;
                     metric_distance_computations += size;
+#endif
                 }
 
 #ifdef USE_SSE
@@ -556,8 +564,10 @@ namespace hnswlib {
                 size_t size = getListCount((linklistsizeint*)data);
                 //                bool cur_node_deleted = isMarkedDeleted(current_node_id);
                 if(collect_metrics) {
+#ifdef COUNT_HC
                     metric_hops++;
                     metric_distance_computations += size;
+#endif
                 }
 
 #ifdef USE_SSE
@@ -648,8 +658,10 @@ namespace hnswlib {
                 size_t size = getListCount((linklistsizeint*)data);
                 //                bool cur_node_deleted = isMarkedDeleted(current_node_id);
                 if(collect_metrics) {
+#ifdef COUNT_HC
                     metric_hops++;
                     metric_distance_computations += size;
+#endif
                 }
 
 #ifdef USE_SSE
@@ -1513,8 +1525,10 @@ namespace hnswlib {
 
                     data = (unsigned int*)get_linklist(currObj, level);
                     int size = getListCount(data);
+#ifdef COUNT_HC
                     metric_hops++;
                     metric_distance_computations += size;
+#endif
 
                     tableint* datal = (tableint*)(data + 1);
                     for(int i = 0; i < size; i++) {
@@ -1569,8 +1583,10 @@ namespace hnswlib {
 
                     data = (unsigned int*)get_linklist(currObj, level);
                     int size = getListCount(data);
+#ifdef COUNT_HC
                     metric_hops++;
                     metric_distance_computations += size;
+#endif
 
                     tableint* datal = (tableint*)(data + 1);
                     for(int i = 0; i < size; i++) {
@@ -1625,8 +1641,10 @@ namespace hnswlib {
 
                     data = (unsigned int*)get_linklist(currObj, level);
                     int size = getListCount(data);
+#ifdef COUNT_HC
                     metric_hops++;
                     metric_distance_computations += size;
+#endif
 
                     tableint* datal = (tableint*)(data + 1);
                     for(int i = 0; i < size; i++) {

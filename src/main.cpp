@@ -80,7 +80,7 @@ int main(int argc, char const* argv[])
 	enum { GREEDY_NAP = 0, HEURISTIC_NAP = 1 };
 
 	bool run_ht_nsw = 1;
-	bool run_ipnsw = 1;
+	bool run_ipnsw = 0;
 	bool run_napg = 0;
 	bool run_hnswfaiss = 0;
 
